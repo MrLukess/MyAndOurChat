@@ -2,24 +2,20 @@ import os
 import sqlite3
 import requests
 import uuid
+import time
 from datetime import timedelta
 from flask import Flask, render_template, request, redirect, session, jsonify, url_for
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_ourchat_final'
-app.permanent_session_lifetime = timedelta(days=30)
-APP_VERSION = "1.0"
+app.secret_key = 'super_secret_maocs_v15'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(BASE_DIR, 'chat_v3.db')
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-socketio = SocketIO(app, cors_allowed_origins="*") # Разрешаем подключения откуда угодно
+# Оптимизация для слабого процессора (Render.com)
+socketio = SocketIO(app, cors_allowed_origins="*")
 online_users = {}
 
 def get_real_username(c, target):
@@ -32,13 +28,15 @@ def init_db():
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, avatar TEXT DEFAULT "")')
-        c.execute('CREATE TABLE IF NOT EXISTS messages (room TEXT, username TEXT, type TEXT, content TEXT, reply_user TEXT DEFAULT "", reply_text TEXT DEFAULT "", msg_id TEXT DEFAULT "", reply_id TEXT DEFAULT "", reply_type TEXT DEFAULT "text", reply_content TEXT DEFAULT "")')
+        c.execute('CREATE TABLE IF NOT EXISTS messages (room TEXT, username TEXT, type TEXT, content TEXT, reply_user TEXT DEFAULT "", reply_text TEXT DEFAULT "", msg_id TEXT DEFAULT "", reply_id TEXT DEFAULT "", reply_type TEXT DEFAULT "text", reply_content TEXT DEFAULT "", timestamp REAL DEFAULT 0)')
         c.execute('CREATE TABLE IF NOT EXISTS user_chats (username TEXT, room_id TEXT, room_name TEXT, UNIQUE(username, room_id))')
         c.execute('CREATE TABLE IF NOT EXISTS groups (room_id TEXT PRIMARY KEY, room_name TEXT, creator TEXT)')
         c.execute('CREATE TABLE IF NOT EXISTS friends (user1 TEXT, user2 TEXT, UNIQUE(user1, user2))')
         c.execute('CREATE TABLE IF NOT EXISTS friend_requests (sender TEXT, receiver TEXT, UNIQUE(sender, receiver))')
         c.execute('CREATE TABLE IF NOT EXISTS blocked (blocker TEXT, blocked TEXT, UNIQUE(blocker, blocked))')
         c.execute('CREATE TABLE IF NOT EXISTS group_bans (room_id TEXT, username TEXT, UNIQUE(room_id, username))')
+        try: c.execute('ALTER TABLE messages ADD COLUMN timestamp REAL DEFAULT 0')
+        except: pass
         conn.commit()
 
 init_db()
@@ -49,6 +47,8 @@ def login():
         username = request.form['username'].strip()
         password = request.form['password']
         action = request.form['action']
+        remember = request.form.get('remember') # Галочка "Запомнить"
+        
         with sqlite3.connect(DB_NAME) as conn:
             c = conn.cursor()
             if action == 'register':
@@ -56,14 +56,18 @@ def login():
                 c.execute('INSERT INTO users (username, password, avatar) VALUES (?, ?, ?)', (username, generate_password_hash(password), ''))
                 c.execute('INSERT INTO user_chats (username, room_id, room_name) VALUES (?, ?, ?)', (username, 'global', '🌍 Общий чат'))
                 conn.commit()
-                session.permanent = True; session['username'] = username
+                if remember:
+                    session.permanent = True; app.permanent_session_lifetime = timedelta(days=14)
+                session['username'] = username
                 return redirect(url_for('chat'))
             elif action == 'login':
                 real_user = get_real_username(c, username)
                 if not real_user: return "<h3>Аккаунт не найден!</h3><a href='/'>Назад</a>"
                 c.execute('SELECT password FROM users WHERE username = ?', (real_user,))
                 if check_password_hash(c.fetchone()[0], password):
-                    session.permanent = True; session['username'] = real_user
+                    if remember:
+                        session.permanent = True; app.permanent_session_lifetime = timedelta(days=14)
+                    session['username'] = real_user
                     return redirect(url_for('chat'))
                 return "<h3>Неверный пароль!</h3><a href='/'>Назад</a>"
     if 'username' in session: return redirect(url_for('chat'))
@@ -78,6 +82,7 @@ def chat():
 
 @app.route('/logout')
 def logout(): session.pop('username', None); return redirect(url_for('login'))
+
 @app.route('/get_online_users')
 def get_online_users(): return jsonify(list(online_users.keys()))
 
@@ -101,6 +106,7 @@ def my_chats():
             chats.append({'id': r_id, 'name': r_name, 'is_creator': creator == me, 'avatar': avatar_url, 'target_user': target_user})
     return jsonify(chats)
 
+# УПРАВЛЕНИЕ: Друзья, Группы, Блокировки (Без изменений, работает быстро)
 @app.route('/get_requests')
 def get_requests():
     with sqlite3.connect(DB_NAME) as conn: return jsonify([row[0] for row in conn.execute('SELECT sender FROM friend_requests WHERE receiver = ?', (session['username'],)).fetchall()])
@@ -116,8 +122,7 @@ def send_friend_req():
         if c.execute('SELECT * FROM blocked WHERE blocker=? AND blocked=?', (target_real, me)).fetchone(): return jsonify({'error': 'Он вас заблокировал.'})
         if c.execute('SELECT * FROM friends WHERE user1=? AND user2=?', (me, target_real)).fetchone(): return jsonify({'error': 'Уже в друзьях!'})
         c.execute('INSERT OR IGNORE INTO friend_requests (sender, receiver) VALUES (?, ?)', (me, target_real)); conn.commit()
-    socketio.emit('new_friend_req', to=target_real)
-    return jsonify({'success': True, 'msg': 'Отправлено!'})
+    socketio.emit('new_friend_req', to=target_real); return jsonify({'success': True, 'msg': 'Отправлено!'})
 
 @app.route('/answer_request', methods=['POST'])
 def answer_request():
@@ -180,10 +185,10 @@ def invite_group():
         if c.execute('SELECT * FROM group_bans WHERE room_id=? AND username=?', (room_id, target_real)).fetchone(): return jsonify({'error': 'Забанен!'})
         grp = c.execute('SELECT room_name FROM groups WHERE room_id = ?', (room_id,)).fetchone()
         c.execute('INSERT OR IGNORE INTO user_chats (username, room_id, room_name) VALUES (?, ?, ?)', (target_real, room_id, grp[0]))
-        msg_id = str(uuid.uuid4())
+        msg_id = str(uuid.uuid4()); ts = time.time()
         sys_msg = f"{me} добавил(а) {target_real} в чат"
-        c.execute('INSERT INTO messages (room, username, type, content, msg_id) VALUES (?, ?, ?, ?, ?)', (room_id, 'OurChat', 'system', sys_msg, msg_id)); conn.commit()
-    socketio.emit('receive_message', {'msg_id': msg_id, 'username': 'OurChat', 'type': 'system', 'content': sys_msg, 'room': room_id, 'avatar': ''}, to=room_id)
+        c.execute('INSERT INTO messages (room, username, type, content, msg_id, timestamp) VALUES (?, ?, ?, ?, ?, ?)', (room_id, 'MAOCS', 'system', sys_msg, msg_id, ts)); conn.commit()
+    socketio.emit('receive_message', {'msg_id': msg_id, 'username': 'MAOCS', 'type': 'system', 'content': sys_msg, 'room': room_id, 'avatar': '', 'timestamp': ts}, to=room_id)
     socketio.emit('chat_invited', {'room_id': room_id}, to=target_real); return jsonify({'success': True})
 
 @app.route('/kick_ban_user', methods=['POST'])
@@ -197,10 +202,10 @@ def kick_ban_user():
         if not target_real or target_real == me: return jsonify({'error': 'Нельзя удалить.'})
         c.execute('DELETE FROM user_chats WHERE username=? AND room_id=?', (target_real, room_id))
         if action == 'ban': c.execute('INSERT OR IGNORE INTO group_bans (room_id, username) VALUES (?,?)', (room_id, target_real))
-        msg_id = str(uuid.uuid4())
+        msg_id = str(uuid.uuid4()); ts = time.time()
         sys_msg = f"{target_real} был {'забанен' if action=='ban' else 'исключен'}."
-        c.execute('INSERT INTO messages (room, username, type, content, msg_id) VALUES (?, ?, ?, ?, ?)', (room_id, 'OurChat', 'system', sys_msg, msg_id)); conn.commit()
-    socketio.emit('receive_message', {'msg_id': msg_id, 'username': 'OurChat', 'type': 'system', 'content': sys_msg, 'room': room_id, 'avatar': ''}, to=room_id)
+        c.execute('INSERT INTO messages (room, username, type, content, msg_id, timestamp) VALUES (?, ?, ?, ?, ?, ?)', (room_id, 'MAOCS', 'system', sys_msg, msg_id, ts)); conn.commit()
+    socketio.emit('receive_message', {'msg_id': msg_id, 'username': 'MAOCS', 'type': 'system', 'content': sys_msg, 'room': room_id, 'avatar': '', 'timestamp': ts}, to=room_id)
     socketio.emit('chat_invited', {'room_id': 'none'}, to=target_real); return jsonify({'success': True})
 
 @app.route('/leave_group', methods=['POST'])
@@ -218,10 +223,11 @@ def delete_group():
             socketio.emit('group_deleted', {'room_id': room_id}, to=room_id); return jsonify({'success': True})
     return jsonify({'error': 'Нет прав!'})
 
+# ОБЛАЧНАЯ ЗАГРУЗКА
 @app.route('/upload', methods=['POST'])
 def upload_file():
     file = request.files.get('file'); room = request.form.get('room', 'global')
-    ru = request.form.get('reply_user', ''); rt = request.form.get('reply_text', ''); r_id = request.form.get('reply_id', ''); r_type = request.form.get('reply_type', 'text'); r_content = request.form.get('reply_content', '')
+    ru, rt, r_id, r_type, r_content = request.form.get('reply_user', ''), request.form.get('reply_text', ''), request.form.get('reply_id', ''), request.form.get('reply_type', 'text'), request.form.get('reply_content', '')
     if not file: return jsonify({'error': 'Нет файла'})
     
     try:
@@ -234,15 +240,15 @@ def upload_file():
     if ext in['png', 'jpg', 'jpeg', 'gif', 'webp']: msg_type = 'image'
     elif ext in['mp4', 'webm', 'ogg']: msg_type = 'video'
     else: msg_type = 'file'
-    msg_id = str(uuid.uuid4())
+    msg_id = str(uuid.uuid4()); ts = time.time()
 
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        c.execute('INSERT INTO messages (room, username, type, content, reply_user, reply_text, msg_id, reply_id, reply_type, reply_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (room, session['username'], msg_type, file_url, ru, rt, msg_id, r_id, r_type, r_content))
+        c.execute('INSERT INTO messages (room, username, type, content, reply_user, reply_text, msg_id, reply_id, reply_type, reply_content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (room, session['username'], msg_type, file_url, ru, rt, msg_id, r_id, r_type, r_content, ts))
         avatar = c.execute('SELECT avatar FROM users WHERE username = ?', (session['username'],)).fetchone()[0]
         conn.commit()
 
-    socketio.emit('receive_message', {'msg_id': msg_id, 'username': session['username'], 'type': msg_type, 'content': file_url, 'room': room, 'avatar': avatar, 'reply_user': ru, 'reply_text': rt, 'reply_id': r_id, 'reply_type': r_type, 'reply_content': r_content}, to=room)
+    socketio.emit('receive_message', {'msg_id': msg_id, 'username': session['username'], 'type': msg_type, 'content': file_url, 'room': room, 'avatar': avatar, 'reply_user': ru, 'reply_text': rt, 'reply_id': r_id, 'reply_type': r_type, 'reply_content': r_content, 'timestamp': ts}, to=room)
     return jsonify({'success': True})
 
 @app.route('/upload_avatar', methods=['POST'])
@@ -256,12 +262,12 @@ def upload_avatar():
 
 @app.route('/history/<room>')
 def history(room):
-    with sqlite3.connect(DB_NAME) as conn: return jsonify([{'username': row[0], 'type': row[1], 'content': row[2], 'avatar': row[3] or '', 'reply_user': row[4], 'reply_text': row[5], 'msg_id': row[6], 'reply_id': row[7], 'reply_type': row[8], 'reply_content': row[9]} for row in conn.execute('SELECT m.username, m.type, m.content, u.avatar, m.reply_user, m.reply_text, m.msg_id, m.reply_id, m.reply_type, m.reply_content FROM messages m LEFT JOIN users u ON m.username = u.username WHERE m.room = ? ORDER BY m.rowid ASC', (room,)).fetchall()])
+    with sqlite3.connect(DB_NAME) as conn: return jsonify([{'username': row[0], 'type': row[1], 'content': row[2], 'avatar': row[3] or '', 'reply_user': row[4], 'reply_text': row[5], 'msg_id': row[6], 'reply_id': row[7], 'reply_type': row[8], 'reply_content': row[9], 'timestamp': row[10] or 0} for row in conn.execute('SELECT m.username, m.type, m.content, u.avatar, m.reply_user, m.reply_text, m.msg_id, m.reply_id, m.reply_type, m.reply_content, m.timestamp FROM messages m LEFT JOIN users u ON m.username = u.username WHERE m.room = ? ORDER BY m.rowid ASC', (room,)).fetchall()])
 
+# СОКЕТЫ И ЗВОНКИ
 @socketio.on('connect')
 def on_connect():
     me = session.get('username')
-    emit('check_version', APP_VERSION)
     if me:
         online_users[me] = online_users.get(me, 0) + 1
         join_room(me)
@@ -282,12 +288,12 @@ def on_join(data): join_room(data['room'])
 def handle_message(data):
     username = session.get('username'); room = data['room']; content = data['content']
     ru, rt, r_id, r_type, rc = data.get('reply_user',''), data.get('reply_text',''), data.get('reply_id',''), data.get('reply_type','text'), data.get('reply_content','')
-    msg_id = str(uuid.uuid4())
+    msg_id = str(uuid.uuid4()); ts = time.time()
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        c.execute('INSERT INTO messages (room, username, type, content, reply_user, reply_text, msg_id, reply_id, reply_type, reply_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (room, username, 'text', content, ru, rt, msg_id, r_id, r_type, rc))
+        c.execute('INSERT INTO messages (room, username, type, content, reply_user, reply_text, msg_id, reply_id, reply_type, reply_content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (room, username, 'text', content, ru, rt, msg_id, r_id, r_type, rc, ts))
         avatar = c.execute('SELECT avatar FROM users WHERE username = ?', (username,)).fetchone()[0]; conn.commit()
-    emit('receive_message', {'msg_id': msg_id, 'username': username, 'type': 'text', 'content': content, 'room': room, 'avatar': avatar, 'reply_user': ru, 'reply_text': rt, 'reply_id': r_id, 'reply_type': r_type, 'reply_content': rc}, to=room)
+    emit('receive_message', {'msg_id': msg_id, 'username': username, 'type': 'text', 'content': content, 'room': room, 'avatar': avatar, 'reply_user': ru, 'reply_text': rt, 'reply_id': r_id, 'reply_type': r_type, 'reply_content': rc, 'timestamp': ts}, to=room)
 
 @socketio.on('typing')
 def on_typing(data): emit('user_typing', {'username': session.get('username'), 'room': data['room']}, to=data['room'], include_self=False)
@@ -301,4 +307,4 @@ def call_response(data): emit('call_response', data, to=data['room'], include_se
 def webrtc_signal(data): emit('webrtc_signal', data, to=data['room'], include_self=False)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
