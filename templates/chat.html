@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MAOCS</title>
+    <link rel="icon" type="image/png" href="/favicon.ico?v=5">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Verdana, sans-serif; height: 100dvh; display: flex; overflow: hidden; color: #fff; background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); background-size: 400% 400%; animation: gradientBG 15s ease infinite;}
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .sidebar { width: 340px; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); z-index: 10; background: rgba(0,0,0,0.2);}
+        .sidebar-header { padding: 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;}
+        .my-profile { display: flex; align-items: center; gap: 15px; }
+        .avatar { width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(45deg, #ff00cc, #333399); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; cursor: pointer; box-shadow: 0 0 10px rgba(255,0,204,0.5); overflow: hidden; flex-shrink: 0;}
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .settings-btn { background: transparent; color: #fff; border: none; font-size: 24px; cursor: pointer; position: relative;}
+        .settings-dot { position: absolute; top:-2px; right:-2px; width:12px; height:12px; background:#ff4757; border-radius:50%; display:none; box-shadow: 0 0 8px #ff4757;}
+
+        .tabs-container { display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;}
+        .tab-btn { flex: 1; padding: 15px; background: none; border: none; font-weight: bold; color: rgba(255,255,255,0.5); cursor: pointer; transition: 0.3s;}
+        .tab-btn.active { color: #fff; border-bottom: 3px solid #00d2ff; text-shadow: 0 0 8px #00d2ff;}
+
+        #chat-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .chat-item { padding: 12px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 12px; margin-bottom: 5px; transition: 0.2s; position: relative;}
+        .chat-item:hover { background: rgba(255,255,255,0.1); }
+        .chat-item.active { background: rgba(255,255,255,0.15); box-shadow: inset 3px 0 0 #00d2ff; }
+        .chat-name { font-weight: 500; flex: 1; font-size: 16px;}
+        .unread { background: #ff4757; color: white; border-radius: 12px; padding: 3px 8px; font-size: 11px; display: none; font-weight: bold;}
+        .online-dot { width: 14px; height: 14px; background: #2ed573; border-radius: 50%; position: absolute; left: 45px; top: 40px; border: 2px solid #302b63; display: none; box-shadow: 0 0 5px #2ed573;}
+
+        .chat-container { flex: 1; display: flex; flex-direction: column; position: relative; min-height: 0;}
+        .header { padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.1); flex-wrap: wrap; gap: 10px; flex-shrink: 0;}
+        .btn-action { border:none; padding:8px 15px; border-radius:8px; cursor:pointer; font-weight:bold; color:white; transition: 0.3s; background: rgba(255,255,255,0.15);}
+        .btn-action:hover { background: rgba(255,255,255,0.25); }
+        .btn-call { background: linear-gradient(45deg, #11998e, #38ef7d); box-shadow: 0 0 10px rgba(56,239,125,0.4); color:black;}
+        .btn-danger { background: rgba(255, 71, 87, 0.8); }
+        #mobile-back-btn { display: none; background: transparent; border: none; color: #00d2ff; font-size: 24px; cursor: pointer; padding: 0 10px 0 0; }
+
+        #chat { flex: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; min-height: 0;}
+        
+        .date-divider { text-align: center; margin: 15px 0; position: relative; }
+        .date-divider::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; border-top: 1px solid rgba(255,255,255,0.1); z-index: 1; }
+        .date-divider span { background: rgba(30, 30, 40, 0.9); padding: 5px 15px; border-radius: 15px; font-size: 12px; color: rgba(255,255,255,0.6); position: relative; z-index: 2; border: 1px solid rgba(255,255,255,0.1); }
+
+        .msg-row { display: flex; gap: 15px; border-radius: 12px; position: relative; max-width: 85%; align-items: flex-end;}
+        .my-msg-row { align-self: flex-end; flex-direction: row-reverse;}
+        .msg-content { display: flex; flex-direction: column; max-width: 100%;}
+        .my-msg-row .msg-content { align-items: flex-end; }
+        
+        .msg-reply-box { font-size: 13px; color: rgba(255,255,255,0.8); margin-bottom: 5px; background: rgba(0,0,0,0.3); padding: 8px 15px; border-left: 3px solid #00d2ff; border-radius: 6px; display: inline-flex; align-items: center; cursor: pointer; gap: 10px; transition: 0.2s;}
+        .msg-reply-box:hover { background: rgba(0,0,0,0.5); }
+        .msg-reply-thumb { max-width: 40px; max-height: 40px; width: auto; height: auto; object-fit: cover; border-radius: 4px; vertical-align: middle;}
+        
+        .msg-bubble { background: rgba(255,255,255,0.1); padding: 12px 18px; border-radius: 15px; font-size: 15px; line-height: 1.4; word-wrap: break-word; position: relative;}
+        .my-msg-row .msg-bubble { background: linear-gradient(135deg, #00d2ff, #3a7bd5); }
+        
+        /* КЛАСС ДЛЯ ПОДСВЕТКИ ОТВЕТА НА ТВОЁ СООБЩЕНИЕ */
+        .reply-to-me { border: 2px solid #2ed573 !important; box-shadow: 0 0 15px rgba(46, 213, 115, 0.4) !important; background: rgba(46, 213, 115, 0.15) !important; }
+
+        .msg-caption { font-size: 15px; margin-bottom: 8px; color: #fff; white-space: pre-wrap; font-weight: 500;}
+        .msg-time { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 3px; margin-left: 5px; margin-right: 5px;}
+        .msg-system { align-self: center; background: rgba(0,0,0,0.3); color: #fff; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; max-width: 80%; text-align: center; border: 1px solid rgba(255,255,255,0.1);}
+
+        .msg-actions { display: flex; gap: 5px; opacity: 0; position: absolute; right: -85px; top: 50%; transform: translateY(-50%); transition: 0.2s;}
+        .my-msg-row .msg-actions { right: auto; left: -85px; flex-direction: row-reverse;}
+        .msg-row:hover .msg-actions { opacity: 1; }
+        .action-btn-msg { background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size:14px; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
+        .action-btn-msg:hover { background: rgba(255,255,255,0.4); }
+        
+        .media-wrap { position: relative; display: inline-block; cursor: zoom-in; }
+        .media-thumbnail { max-width: 300px; max-height: 300px; border-radius: 10px; object-fit: cover; display: block; background: #000;}
+        .play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); border-radius: 10px; font-size: 40px; color: white; pointer-events: none; }
+
+        #attachment-preview { display: none; background: rgba(0,210,255,0.15); padding: 10px 20px; border-top: 1px solid rgba(255,255,255,0.1); align-items: center; justify-content: space-between; font-size: 14px; flex-shrink: 0;}
+        .cancel-attach-btn { background: #ff4757; color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-weight: bold; font-size: 16px; display: flex; align-items: center; justify-content: center;}
+
+        .input-area { padding: 15px 20px; display: flex; gap: 15px; align-items: flex-end; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; z-index: 10;}
+        .input-area textarea { flex: 1; padding: 12px 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.4); color: white; outline: none; font-size: 15px; resize: none; height: 45px; max-height: 120px; box-sizing: border-box; overflow-y: auto; font-family: inherit; line-height: 20px;}
+        .input-area button { padding: 12px 25px; height: 45px; background: linear-gradient(45deg, #00d2ff, #3a7bd5); color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: bold;}
+
+        .modal-bg { display: none; position: fixed; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; backdrop-filter: blur(5px);}
+        .modal-box { background: rgba(20,20,30,0.95); padding: 30px; border-radius: 20px; width: 450px; border: 1px solid rgba(255,255,255,0.1); max-width: 90%; max-height: 90dvh; overflow-y:auto;}
+        
+        .lightbox img, .lightbox video { max-width: 90vw; max-height: 90vh; border-radius: 10px; outline: none; box-shadow: 0 0 30px rgba(0,0,0,0.5);}
+
+        #mic-bar-container { width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; margin-top: 10px; overflow: hidden; display: none;}
+        #mic-bar { height: 100%; width: 0%; background: #2ed573; transition: width 0.1s;}
+        .select-device { width:100%; padding:10px; margin-top:5px; border-radius:5px; background:#24243e; color:white; border:1px solid gray; outline:none; font-family:inherit;}
+
+        .call-ringing { display: none; position: fixed; z-index: 10000; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(30,30,40,0.95); padding: 40px; border-radius: 20px; text-align: center; border: 1px solid #00d2ff;}
+        
+        /* СЕТКА ВИДЕО ДЛЯ ГРУППОВЫХ ЗВОНКОВ */
+        .video-container { display: flex; gap: 10px; margin-bottom: 20px; width: 100%; justify-content: center; position: relative; flex-wrap: wrap;}
+        .video-container video { flex: 1; min-width: 250px; max-width: 100%; max-height: 60vh; background: #111; border-radius: 15px; object-fit: cover; }
+        
+        #localVideo { width: 150px; position: absolute; bottom: 15px; right: 15px; border: 3px solid #00d2ff; border-radius: 10px; z-index: 100; background: #000; object-fit: cover;}
+
+        #minimized-call { display:none; position:fixed; bottom:20px; right:20px; background:rgba(20,20,30,0.95); border:1px solid #00d2ff; padding:15px; border-radius:15px; z-index:9999; cursor:pointer; box-shadow:0 0 15px #00d2ff; text-align:center;}
+        #minimized-call:hover { background:rgba(30,30,45,0.95); }
+
+        @media (max-width: 768px) {
+            body { flex-direction: row; }
+            .sidebar { width: 100%; height: 100dvh; border-right: none; }
+            .sidebar.hidden-mobile { display: none !important; }
+            .chat-container { width: 100%; height: 100dvh; display: none; }
+            .chat-container.active-mobile { display: flex; }
+            #mobile-back-btn { display: block !important; }
+            .msg-row { max-width: 95%; }
+            .media-thumbnail { max-width: 200px; max-height: 200px; }
+            .msg-actions { opacity: 1; position: relative; right: 0; left: 0; top: 0; transform: none; margin-top: 5px;}
+            .my-msg-row .msg-actions { flex-direction: row; justify-content: flex-end;}
+            #localVideo { width: 100px; bottom: 10px; right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <audio id="notifSound" preload="auto"><source src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" type="audio/mpeg"></audio>
+    <audio id="ringtone" preload="auto" loop><source src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" type="audio/mpeg"></audio>
+
+    <div class="sidebar glass-panel" id="sidebar">
+        <div class="sidebar-header">
+            <div class="my-profile">
+                <input type="file" id="avatarUpload" style="display: none;" accept="image/*">
+                <div class="avatar" onclick="document.getElementById('avatarUpload').click()">
+                    {% if avatar %} <img src="{{ avatar }}"> {% else %} {{ username[0] | upper }} {% endif %}
+                </div>
+                <div style="font-weight: bold; font-size: 18px;">{{ username }}</div>
+            </div>
+            <button class="settings-btn" onclick="openSettings()">⚙️<div class="settings-dot" id="req-dot"></div></button>
+        </div>
+
+        <div class="tabs-container">
+            <button class="tab-btn active" id="tab-pm" onclick="switchTab('pm')" data-i18n="personal">Личные</button>
+            <button class="tab-btn" id="tab-group" onclick="switchTab('group')" data-i18n="groups">Группы</button>
+        </div>
+
+        <div class="sidebar-search" style="padding:15px; flex-shrink:0;">
+            <input type="text" id="searchInput" placeholder="Поиск чатов..." onkeyup="filterChats()" style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(0,0,0,0.4); color:white; outline:none; box-sizing:border-box;">
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button onclick="addFriend()" class="btn-action" style="flex:1; font-size:12px; padding:8px;" data-i18n="add_friend">➕ Добавить друга</button>
+                <button onclick="createGroup()" class="btn-action" style="flex:1; font-size:12px; padding:8px; background:#8e44ad;" data-i18n="create_group">👥 Создать группу</button>
+            </div>
+        </div>
+        <div id="chat-list"></div>
+    </div>
+
+    <div class="chat-container" id="chat-container">
+        <div class="header glass-panel">
+            <div style="display: flex; align-items: center;">
+                <button id="mobile-back-btn" onclick="closeChatMobile()">⬅️</button>
+                <div>
+                    <span id="chat-title" style="font-size: 20px; font-weight: bold;">MAOCS</span>
+                    <div id="chat-status" style="font-size: 13px; color: rgba(255,255,255,0.6);" data-i18n="select_chat">Выберите беседу</div>
+                </div>
+            </div>
+            <div id="chat-actions" style="display: none; gap: 5px; flex-wrap: wrap;"></div>
+        </div>
+        
+        <div id="chat"></div>
+        <div id="typing-status" class="typing-indicator" style="display:none; padding:5px 25px;"></div>
+
+        <div class="replying-indicator" id="reply-banner" style="display:none; background:rgba(0,0,0,0.4); padding:8px 12px; justify-content:space-between; align-items:center; gap:8px;">
+            <div id="reply-content-box" style="display:flex; align-items:center; gap:8px; min-width:0;"></div>
+            <span style="cursor:pointer; font-size:22px; flex-shrink:0;" onclick="cancelReply()">&times;</span>
+        </div>
+
+        <div id="attachment-preview">
+            <div>📎 Прикреплено: <b id="attachment-name"></b></div>
+            <button class="cancel-attach-btn" onclick="cancelAttachment()">&times;</button>
+        </div>
+
+        <div class="input-area glass-panel">
+            <input type="file" id="fileInput" style="display: none;">
+            <button onclick="document.getElementById('fileInput').click()" style="background:rgba(255,255,255,0.1); border-radius:50%; width:45px; height:45px; padding:0; font-size:20px;">➕</button>
+            <textarea id="msgInput" placeholder="Напишите сообщение..." maxlength="10000"></textarea>
+            <button id="sendBtn" onclick="sendMsg()" data-i18n="send">Отправить</button>
+        </div>
+    </div>
+
+    <!-- ОКНО НАСТРОЕК -->
+    <div id="settings-modal" class="modal-bg" onclick="closeModals(event)">
+        <div class="modal-box">
+            <h2 style="margin-top:0;" data-i18n="settings_title">⚙️ Настройки MAOCS</h2>
+            
+            <div style="background:rgba(255,255,255,0.1); padding:15px; border-radius:10px; margin-bottom:15px;">
+                <label style="font-weight:bold; color:#00d2ff;" data-i18n="sel_mic">🎤 Выбор микрофона:</label><br>
+                <select id="micSelect" class="select-device"></select><br><br>
+                <button class="btn-action" id="mic-test-btn" onclick="testMic()" style="width:100%; background:#2ed573; color:black;" data-i18n="test_mic">🎤 Проверка микрофона</button>
+                <div id="mic-bar-container"><div id="mic-bar"></div></div>
+                <br>
+                <label style="font-weight:bold; color:#00d2ff;" data-i18n="sel_cam">📷 Выбор камеры:</label><br>
+                <select id="camSelect" class="select-device"></select><br><br>
+                <button class="btn-action" id="cam-test-btn" onclick="testCam()" style="width:100%; background:#2ed573; color:black;" data-i18n="test_cam">📷 Проверка камеры</button>
+                <video id="cam-test-video" autoplay playsinline style="display:none; width:100%; border-radius:10px; margin-top:10px; border:2px solid #00d2ff;"></video>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.1); padding:15px; border-radius:10px; margin-bottom:15px;">
+                <label style="font-weight:bold; color:#00d2ff;" data-i18n="ui_lang">Язык интерфейса:</label><br>
+                <select id="uiLang" class="select-device" onchange="saveUILang()">
+                    <option value="uk">Українська</option>
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                    <option value="it">Italiano</option>
+                    <option value="pl">Polski</option>
+                    <option value="be">Беларуская</option>
+                    <option value="ja">日本語</option>
+                    <option value="zh">中文</option>
+                    <option value="ko">한국어</option>
+                </select>
+                <br><br>
+                <label style="font-weight:bold; color:#00d2ff;" data-i18n="trans_lang">Язык перевода:</label><br>
+                <select id="targetLang" class="select-device" onchange="saveLang()">
+                    <option value="uk">Украинский</option>
+                    <option value="ru">Русский</option>
+                    <option value="en">Английский</option>
+                    <option value="it">Итальянский</option>
+                    <option value="pl">Польский</option>
+                    <option value="be">Белорусский</option>
+                    <option value="ja">Японский</option>
+                    <option value="zh">Китайский</option>
+                    <option value="ko">Корейский</option>
+                </select>
+                <br><br>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" id="autoTranslate" onchange="saveLang()" style="width:20px; height:20px;">
+                    <b data-i18n="auto_trans">Авто-перевод</b>
+                </label>
+            </div>
+
+            <!-- ДОНАТ БЛОК -->
+            <div style="background:rgba(255,255,255,0.1); padding:15px; border-radius:10px; margin-bottom:15px; text-align:center;">
+                <h3 style="margin-top:0; color:#2ed573;" data-i18n="donate_title">💖 Поддержать создателя</h3>
+                <p style="font-size:12px; color:rgba(255,255,255,0.7);" data-i18n="donate_desc">Если вам нравится мессенджер, вы можете помочь развитию проекта!</p>
+                <input type="text" value="0000 0000 0000 0000" readonly style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.5); color:#00d2ff; text-align:center; font-family:monospace; border:1px solid #00d2ff; margin-bottom:10px;" id="donateCard">
+                <button class="btn-action" style="background:linear-gradient(45deg, #ff00cc, #333399); width:100%; color:white;" onclick="copyCard()" data-i18n="copy_card">Копировать карту 💳</button>
+            </div>
+
+            <h3 style="color:#00d2ff; margin-bottom:5px;" data-i18n="requests">📩 Заявки</h3>
+            <div id="requests-container" style="max-height: 120px; overflow-y:auto; margin-bottom:15px;"></div>
+            <h3 style="color:#ff4757; margin-bottom:5px;" data-i18n="blacklist">🚫 ЧС</h3>
+            <div id="blocked-list" style="max-height: 100px; overflow-y:auto; margin-bottom:20px;"></div>
+            
+            <!-- КНОПКА ПОЛНОГО УДАЛЕНИЯ -->
+            <button class="btn-action" style="width:100%; padding:12px; background:rgba(255,0,0,0.6); margin-bottom:10px; border:1px solid red;" onclick="resetDB()" data-i18n="reset_db">🔥 Сбросить базу (Удалить всё)</button>
+
+            <button class="btn-action" style="width:100%; padding:12px; background:#ff4757;" onclick="window.location.href='/logout'" data-i18n="logout">🚪 Выйти</button>
+        </div>
+    </div>
+
+    <!-- ПОЛНОЭКРАННЫЕ ФОТО/ВИДЕО -->
+    <div id="lightbox" class="modal-bg" onclick="closeLightbox(event)" style="z-index: 10000; display:none;">
+        <span class="lightbox-close" onclick="closeLightbox(event)" style="position:absolute; top:20px; right:40px; font-size:40px; color:white; cursor:pointer;">&times;</span>
+        <img id="lb-img" src="" style="display:none; max-width:90vw; max-height:90vh;">
+        <video id="lb-vid" src="" controls autoplay playsinline style="display:none; max-width:90vw; max-height:90vh;"></video>
+    </div>
+
+    <div id="call-ringing" class="call-ringing">
+        <h2 id="caller-name" style="color:white;">Входящий звонок...</h2>
+        <div style="display:flex; gap:20px; justify-content:center; margin-top:30px;">
+            <button onclick="acceptCall()" style="background:#2ed573; color:white; border:none; padding:15px 30px; border-radius:30px; cursor:pointer; font-weight:bold;">Принять 📞</button>
+            <button onclick="rejectCall()" style="background:#ff4757; color:white; border:none; padding:15px 30px; border-radius:30px; cursor:pointer; font-weight:bold;">Отклонить ✖</button>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО ГРУППОВОГО ЗВОНКА (MESH WEBRTC) -->
+    <div id="call-modal" class="modal-bg">
+        <div style="background:rgba(20,20,30,0.95); padding:30px; border-radius:20px; width:95%; max-width:1000px; text-align:center; border:1px solid #00d2ff; position:relative;">
+            <button onclick="minimizeCall()" style="position:absolute; top:15px; right:15px; background:transparent; border:none; color:#00d2ff; font-size:24px; cursor:pointer;">🔽</button>
+            <h2 id="call-status" style="margin-top:0;">Звонок...</h2>
+            <div id="call-timer" style="font-family:monospace; font-size:18px; margin-bottom:10px; color:#00d2ff; display:none;">00:00</div>
+            
+            <div class="video-container" id="video-grid">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <!-- Видео других пользователей будут добавляться сюда -->
+            </div>
+
+            <div id="call-device-settings" style="margin-top:10px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <select id="callMicSelect" class="select-device" style="width:auto; max-width:200px; padding:8px;" onchange="changeCallDevice()"></select>
+                <select id="callCamSelect" class="select-device" style="width:auto; max-width:200px; padding:8px;" onchange="changeCallDevice()"></select>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap; justify-content:center;">
+                <button onclick="toggleMute()" class="btn-action" id="btn-mute" style="padding:15px 25px; border-radius:30px;">🎤 Вкл</button>
+                <button onclick="toggleVideo()" class="btn-action" id="btn-video" style="padding:15px 25px; border-radius:30px; background:#ff4757;">📷 Выкл</button>
+                <button onclick="toggleScreenShare()" class="btn-action" id="btn-screen" style="padding:15px 25px; border-radius:30px; background:#00d2ff; color:black;">💻 Экран</button>
+                <button onclick="endCall(true)" style="background:#ff4757; color:white; border:none; padding:15px 25px; border-radius:30px; cursor:pointer; font-weight:bold;">Завершить 📞</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="minimized-call" onclick="maximizeCall()">
+        <span style="color:#2ed573; font-weight:bold; font-size:24px;">📞 Вернуться в звонок</span>
+    </div>
+
+    <script>
+        // --- ЗВУКИ ---
+        let audioUnlocked = false;
+        function unlockAudioOnce() {
+            if (audioUnlocked) return; audioUnlocked = true;
+            let n = document.getElementById('notifSound'), r = document.getElementById('ringtone');
+            if(n) { n.volume = 0.3; n.play().then(()=>{ n.pause(); n.currentTime=0; }).catch(()=>{}); }
+            if(r) { r.volume = 0.3; r.play().then(()=>{ r.pause(); r.currentTime=0; }).catch(()=>{}); }
+            document.removeEventListener('click', unlockAudioOnce); document.removeEventListener('touchstart', unlockAudioOnce);
+        }
+        document.addEventListener('click', unlockAudioOnce); document.addEventListener('touchstart', unlockAudioOnce);
+        function playSound(id) { unlockAudioOnce(); let a = document.getElementById(id); if (a) { a.currentTime = 0; a.play().catch(()=>{}); } }
+
+        function copyCard() {
+            let card = document.getElementById('donateCard');
+            card.select();
+            card.setSelectionRange(0, 99999); 
+            navigator.clipboard.writeText(card.value);
+            alert("Номер карты скопирован! Спасибо за поддержку 💖");
+        }
+
+        function resetDB() {
+            const t = (UI_STRINGS[uiLang] || UI_STRINGS.ru);
+            if(confirm("ВЫ УВЕРЕНЫ? Вся история сообщений, аккаунты и друзья будут удалены навсегда!")) {
+                fetch('/factory_reset', { method: 'POST' }).then(() => {
+                    alert("База данных очищена! Вас перекинет на окно входа.");
+                    window.location.href = '/logout';
+                });
+            }
+        }
+
+        // --- УСТРОЙСТВА ---
+        async function loadDevices() {
+            try {
+                await navigator.mediaDevices.getUserMedia({audio:true, video:true});
+                let devices = await navigator.mediaDevices.enumerateDevices();
+                let micS = document.getElementById('micSelect'), camS = document.getElementById('camSelect');
+                let cmic = document.getElementById('callMicSelect'), ccam = document.getElementById('callCamSelect');
+                micS.innerHTML = ''; camS.innerHTML = ''; cmic.innerHTML = ''; ccam.innerHTML = '';
+                devices.forEach(d => {
+                    if(d.kind === 'audioinput') {
+                        let opt = `<option value="${d.deviceId}">${d.label || 'Микрофон '+(micS.length+1)}</option>`;
+                        micS.innerHTML += opt; cmic.innerHTML += opt;
+                    }
+                    if(d.kind === 'videoinput') {
+                        let opt = `<option value="${d.deviceId}">${d.label || 'Камера '+(camS.length+1)}</option>`;
+                        camS.innerHTML += opt; ccam.innerHTML += opt;
+                    }
+                });
+            } catch(e) { console.log("Нет доступа к устройствам"); }
+        }
+        
+        let testStream, testCtx, testAnalyser, testCamStream;
+        async function testMic() {
+            if(testStream) return stopMicTest();
+            try {
+                let micId = document.getElementById('micSelect').value;
+                testStream = await navigator.mediaDevices.getUserMedia({audio: micId ? {deviceId: {exact: micId}} : true});
+                testCtx = new (window.AudioContext || window.webkitAudioContext)();
+                testAnalyser = testCtx.createAnalyser();
+                let src = testCtx.createMediaStreamSource(testStream); src.connect(testAnalyser); testAnalyser.fftSize = 256;
+                let data = new Uint8Array(testAnalyser.frequencyBinCount);
+                document.getElementById('mic-bar-container').style.display = 'block';
+                document.getElementById('mic-test-btn').innerText = "Остановить микрофон"; document.getElementById('mic-test-btn').style.background = "#ff4757";
+                function render() {
+                    if(!testStream) return; testAnalyser.getByteFrequencyData(data);
+                    let sum = data.reduce((a,b)=>a+b,0); let vol = sum / data.length;
+                    document.getElementById('mic-bar').style.width = (vol/255*100) + '%';
+                    requestAnimationFrame(render);
+                }
+                render();
+            } catch(e) { alert("Микрофон недоступен!"); }
+        }
+        function stopMicTest() {
+            if(testStream) testStream.getTracks().forEach(t=>t.stop()); testStream = null; if(testCtx) testCtx.close();
+            document.getElementById('mic-bar-container').style.display = 'none';
+            document.getElementById('mic-test-btn').innerText = (UI_STRINGS[uiLang] || UI_STRINGS.ru).test_mic; document.getElementById('mic-test-btn').style.background = "#2ed573";
+        }
+
+        async function testCam() {
+            if(testCamStream) return stopCamTest();
+            try {
+                let camId = document.getElementById('camSelect').value;
+                testCamStream = await navigator.mediaDevices.getUserMedia({video: camId ? {deviceId: {exact: camId}} : true});
+                let vid = document.getElementById('cam-test-video');
+                vid.style.display = 'block'; vid.srcObject = testCamStream;
+                document.getElementById('cam-test-btn').innerText = "Остановить камеру"; document.getElementById('cam-test-btn').style.background = "#ff4757";
+            } catch(e) { alert("Камера недоступна!"); }
+        }
+        function stopCamTest() {
+            if(testCamStream) testCamStream.getTracks().forEach(t=>t.stop()); testCamStream = null;
+            let vid = document.getElementById('cam-test-video');
+            vid.style.display = 'none'; vid.srcObject = null;
+            document.getElementById('cam-test-btn').innerText = (UI_STRINGS[uiLang] || UI_STRINGS.ru).test_cam; document.getElementById('cam-test-btn').style.background = "#2ed573";
+        }
+
+        // --- МУЛЬТИЯЗЫЧНОСТЬ (УКРАИНСКИЙ ПО УМОЛЧАНИЮ) ---
+        const UI_STRINGS = {
+            ru: { ui_lang:'Язык интерфейса:', trans_lang:'Язык перевода:', auto_trans:'Авто-перевод', personal:'Личные', groups:'Группы', search_placeholder:'Поиск чатов...', type_msg:'Напишите сообщение...', send:'Отправить', online:'В сети', offline:'Не в сети', select_chat:'Выберите беседу', call:'Звонок', add_friend:'➕ Добавить друга', create_group:'👥 Создать группу', requests:'Заявки', no_requests:'Нет новых заявок', blacklist:'Чёрный список', empty_list:'Список пуст', unblock:'Разблокировать', logout:'🚪 Выйти', add_to_group:'+ Добавить', leave:'Выйти', members:'Участники', delete_group:'Удалить группу', unfriend:'Удалить из друзей', block:'Заблокировать', typing:'печатает...', clear_chat:'🗑 Очистить чат', save:'Сохранить', delete_msg_confirm:'Удалить сообщение для всех?', test_mic: '🎤 Проверка микрофона', test_cam: '📷 Проверка камеры', copy_card: 'Копировать карту 💳', donate_desc: 'Если вам нравится мессенджер, вы можете помочь развитию проекта!', settings_title: '⚙️ Настройки MAOCS', donate_title: '💖 Поддержать создателя', sel_mic: '🎤 Выбор микрофона:', sel_cam: '📷 Выбор камеры:', reset_db: '🔥 Сбросить базу (Удалить всё)' },
+            uk: { ui_lang:'Мова інтерфейсу:', trans_lang:'Мова перекладу:', auto_trans:'Авто-переклад', personal:'Особисті', groups:'Групи', search_placeholder:'Пошук чатів...', type_msg:'Напишіть повідомлення...', send:'Надіслати', online:'В мережі', offline:'Не в мережі', select_chat:'Виберіть бесіду', call:'Дзвінок', add_friend:'➕ Додати друга', create_group:'👥 Створити групу', requests:'Заявки', no_requests:'Немає нових заявок', blacklist:'Чорний список', empty_list:'Список порожній', unblock:'Розблокувати', logout:'🚪 Вийти', add_to_group:'+ Додати', leave:'Вийти', members:'Учасники', delete_group:'Видалити групу', unfriend:'Видалити з друзів', block:'Заблокувати', typing:'друкує...', clear_chat:'🗑 Очистити чат', save:'Зберегти', delete_msg_confirm:'Видалити повідомлення для всіх?', test_mic: '🎤 Перевірка мікрофона', test_cam: '📷 Перевірка камери', copy_card: 'Копіювати картку 💳', donate_desc: 'Якщо вам подобається месенджер, ви можете допомогти розвитку проєкту!', settings_title: '⚙️ Налаштування MAOCS', donate_title: '💖 Підтримати творця', sel_mic: '🎤 Вибір мікрофона:', sel_cam: '📷 Вибір камери:', reset_db: '🔥 Скинути базу (Видалити все)' },
+            en: { ui_lang:'Interface language:', trans_lang:'Message translation:', auto_trans:'Auto-translate', personal:'Personal', groups:'Groups', search_placeholder:'Search...', type_msg:'Type a message...', send:'Send', online:'Online', offline:'Offline', select_chat:'Select a chat', call:'Call', add_friend:'➕ Add friend', create_group:'👥 Create group', requests:'Requests', no_requests:'No requests', blacklist:'Blocked', empty_list:'Empty', unblock:'Unblock', logout:'🚪 Log out', add_to_group:'+ Add', leave:'Leave', members:'Members', delete_group:'Delete group', unfriend:'Unfriend', block:'Block', typing:'typing...', clear_chat:'🗑 Clear chat', save:'Save', delete_msg_confirm:'Delete message for everyone?', test_mic: '🎤 Test Mic', test_cam: '📷 Test Camera', copy_card: 'Copy Card 💳', donate_desc: 'If you like this app, you can support its development!', settings_title: '⚙️ Settings', donate_title: '💖 Support Developer', sel_mic: '🎤 Select Mic:', sel_cam: '📷 Select Camera:', reset_db: '🔥 Reset DB (Wipe all)' },
+            it: { ui_lang:'Lingua interfaccia:', trans_lang:'Lingua traduzione:', auto_trans:'Traduci', personal:'Personale', groups:'Gruppi', search_placeholder:'Cerca...', type_msg:'Scrivi...', send:'Invia', online:'Online', offline:'Offline', select_chat:'Seleziona chat', call:'Chiama', add_friend:'➕ Aggiungi amico', create_group:'👥 Crea gruppo', requests:'Richieste', no_requests:'Nessuna richiesta', blacklist:'Bloccati', empty_list:'Vuoto', unblock:'Sblocca', logout:'🚪 Esci', add_to_group:'+ Aggiungi', leave:'Esci', members:'Membri', delete_group:'Elimina gruppo', unfriend:'Rimuovi amico', block:'Blocca', typing:'sta scrivendo...', clear_chat:'🗑 Cancella chat', save:'Salva', delete_msg_confirm:'Eliminare il messaggio per tutti?', test_mic: '🎤 Testa Microfono', test_cam: '📷 Testa Fotocamera', copy_card: 'Copia Carta 💳', donate_desc: 'Se ti piace, sostieni lo sviluppo!', settings_title: '⚙️ Impostazioni', donate_title: '💖 Sostieni il creatore', sel_mic: '🎤 Seleziona Mic:', sel_cam: '📷 Seleziona Fotocamera:', reset_db: '🔥 Resetta DB' },
+            be: { ui_lang:'Мова інтэрфейсу:', trans_lang:'Мова перакладу:', auto_trans:'Аўта-пераклад', personal:'Асабістыя', groups:'Групы', search_placeholder:'Пошук...', type_msg:'Напішыце паведамленне...', send:'Адправіць', online:'У сетцы', offline:'Не ў сетцы', select_chat:'Выберыце гутарку', call:'Званок', add_friend:'➕ Дадаць сябра', create_group:'👥 Стварыць групу', requests:'Заяўкі', no_requests:'Няма заявак', blacklist:'Чорны спіс', empty_list:'Пуста', unblock:'Разблакаваць', logout:'🚪 Выйсці', add_to_group:'+ Дадаць', leave:'Выйсці', members:'Удзельнікі', delete_group:'Выдаліць групу', unfriend:'Выдаліць', block:'Заблакаваць', typing:'друкуе...', clear_chat:'🗑 Ачысціць чат', save:'Захаваць', delete_msg_confirm:'Выдаліць паведамленне для ўсіх?', test_mic: '🎤 Праверка мікрафона', test_cam: '📷 Праверка камеры', copy_card: 'Капіяваць карту 💳', donate_desc: 'Дапамажыце развіццю праекта!', settings_title: '⚙️ Налады', donate_title: '💖 Падтрымаць праект', sel_mic: '🎤 Выбар мікрафона:', sel_cam: '📷 Выбар камеры:', reset_db: '🔥 Скінуць базу' },
+            pl: { ui_lang:'Język interfejsu:', trans_lang:'Język tłumaczenia:', auto_trans:'Automatyczne tłumaczenie', personal:'Osobiste', groups:'Grupy', search_placeholder:'Szukaj...', type_msg:'Napisz wiadomość...', send:'Wyślij', online:'Online', offline:'Offline', select_chat:'Wybierz czat', call:'Zadzwoń', add_friend:'➕ Dodaj znajomego', create_group:'👥 Utwórz grupę', requests:'Zaproszenia', no_requests:'Brak', blacklist:'Zablokowani', empty_list:'Pusto', unblock:'Odblokuj', logout:'🚪 Wyloguj', add_to_group:'+ Dodaj', leave:'Opuść', members:'Członkowie', delete_group:'Usuń grupę', unfriend:'Usuń', block:'Zablokuj', typing:'pisze...', clear_chat:'🗑 Wyczyść czat', save:'Zapisz', delete_msg_confirm:'Usunąć wiadomość dla wszystkich?', test_mic: '🎤 Test Mikrofonu', test_cam: '📷 Test Kamery', copy_card: 'Kopiuj kartę 💳', donate_desc: 'Wesprzyj rozwój projektu!', settings_title: '⚙️ Ustawienia', donate_title: '💖 Wesprzyj twórcę', sel_mic: '🎤 Wybierz Mikrofon:', sel_cam: '📷 Wybierz Kamerę:', reset_db: '🔥 Resetuj DB' },
+            ja: { ui_lang:'インターフェース言語:', trans_lang:'メッセージ翻訳:', auto_trans:'自動翻訳', personal:'個人', groups:'グループ', search_placeholder:'検索...', type_msg:'メッセージ...', send:'送信', online:'オンライン', offline:'オフライン', select_chat:'チャットを選択', call:'通話', add_friend:'➕ 友達を追加', create_group:'👥 グループ作成', requests:'リクエスト', no_requests:'なし', blacklist:'ブロック', empty_list:'空です', unblock:'解除', logout:'🚪 ログアウト', add_to_group:'+ 追加', leave:'退出', members:'メンバー', delete_group:'グループ削除', unfriend:'友達を削除', block:'ブロック', typing:'入力中...', clear_chat:'🗑 チャットをクリア', save:'保存', delete_msg_confirm:'全員のメッセージを削除しますか？', test_mic: '🎤 マイクテスト', test_cam: '📷 カメラテスト', copy_card: 'カードをコピー 💳', donate_desc: 'プロジェクトを支援できます！', settings_title: '⚙️ 設定', donate_title: '💖 クリエイターを支援', sel_mic: '🎤 マイク選択:', sel_cam: '📷 カメラ選択:', reset_db: '🔥 全て削除' },
+            zh: { ui_lang:'界面语言:', trans_lang:'翻译语言:', auto_trans:'自动翻译', personal:'个人', groups:'群组', search_placeholder:'搜索...', type_msg:'输入消息...', send:'发送', online:'在线', offline:'离线', select_chat:'选择聊天', call:'呼叫', add_friend:'➕ 添加好友', create_group:'👥 创建群组', requests:'请求', no_requests:'没有请求', blacklist:'黑名单', empty_list:'列表为空', unblock:'解锁', logout:'🚪 登出', add_to_group:'+ 添加', leave:'离开', members:'成员', delete_group:'删除群组', unfriend:'删除好友', block:'拉黑', typing:'正在输入...', clear_chat:'🗑 清除聊天', save:'保存', delete_msg_confirm:'删除所有人的消息？', test_mic: '🎤 测试麦克风', test_cam: '📷 测试摄像头', copy_card: '复制卡号 💳', donate_desc: '支持项目开发！', settings_title: '⚙️ 设置', donate_title: '💖 支持开发者', sel_mic: '🎤 选择麦克风:', sel_cam: '📷 选择摄像头:', reset_db: '🔥 重置数据库' },
+            ko: { ui_lang:'인터페이스 언어:', trans_lang:'번역 언어:', auto_trans:'자동 번역', personal:'개인', groups:'그룹', search_placeholder:'검색...', type_msg:'메시지 입력...', send:'보내기', online:'온라인', offline:'오프라인', select_chat:'채팅 선택', call:'통화', add_friend:'➕ 친구 추가', create_group:'👥 그룹 생성', requests:'요청', no_requests:'요청 없음', blacklist:'차단 목록', empty_list:'목록 비어있음', unblock:'차단 해제', logout:'🚪 로그아웃', add_to_group:'+ 추가', leave:'나가기', members:'멤버', delete_group:'그룹 삭제', unfriend:'친구 삭제', block:'차단', typing:'입력 중...', clear_chat:'🗑 채팅 지우기', save:'저장', delete_msg_confirm:'모두를 위한 메시지 삭제?', test_mic: '🎤 마이크 테스트', test_cam: '📷 카메라 테스트', copy_card: '카드 복사 💳', donate_desc: '프로젝트 개발을 지원해주세요!', settings_title: '⚙️ 설정', donate_title: '💖 크리에이터 지원', sel_mic: '🎤 마이크 선택:', sel_cam: '📷 카메라 선택:', reset_db: '🔥 DB 초기화' }
+        };
+        // УКРАИНСКИЙ ПО УМОЛЧАНИЮ
+        let uiLang = localStorage.getItem('maocs_ui_lang') || 'uk';
+        function applyUILang() {
+            const t = UI_STRINGS[uiLang] || UI_STRINGS.uk;
+            document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.getAttribute('data-i18n'); if (t[k]) el.textContent = t[k]; });
+            const mi = document.getElementById('msgInput'); if (mi && !editingMsgId) mi.placeholder = t.type_msg;
+            const si = document.getElementById('searchInput'); if (si) si.placeholder = t.search_placeholder;
+            if(currentRoom) openChat(currentRoom, document.getElementById('chat-title').innerText);
+        }
+        function saveUILang() { uiLang = document.getElementById('uiLang').value; localStorage.setItem('maocs_ui_lang', uiLang); applyUILang(); }
+
+        let appLang = localStorage.getItem('maocs_lang') || 'uk'; let autoTranslate = localStorage.getItem('maocs_trans') === 'true';
+        document.getElementById('targetLang').value = appLang; document.getElementById('autoTranslate').checked = autoTranslate; document.getElementById('uiLang').value = uiLang;
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyUILang); else applyUILang();
+        function saveLang() { appLang = document.getElementById('targetLang').value; autoTranslate = document.getElementById('autoTranslate').checked; localStorage.setItem('maocs_lang', appLang); localStorage.setItem('maocs_trans', autoTranslate); if(currentRoom) openChat(currentRoom, document.getElementById('chat-title').innerText); }
+
+        // ЗАЩИТА ОТ ОШИБОК ПЕРЕВОДА
+        async function translateText(text) { 
+            if(!autoTranslate) return text; 
+            try { 
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3500);
+                let res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${appLang}&dt=t&q=${encodeURIComponent(text)}`, { signal: controller.signal }); 
+                clearTimeout(timeoutId);
+                let json = await res.json(); 
+                return json[0][0][0] || text; 
+            } catch(e) { 
+                return text; 
+            } 
+        }
+
+        function closeChatMobile() { document.getElementById('sidebar').classList.remove('hidden-mobile'); document.getElementById('chat-container').classList.remove('active-mobile'); currentRoom = null; document.getElementById('chat-title').innerText = "MAOCS"; document.getElementById('chat-status').innerText = (UI_STRINGS[uiLang] || UI_STRINGS.uk).select_chat; document.getElementById('chat-actions').style.display = 'none'; }
+
+        // --- ОСНОВНОЕ ---
+        const socket = io(); const myUsername = "{{ username }}"; const chatDiv = document.getElementById('chat');
+        let currentRoom = null; let onlineUsers = new Set(); let allChats =[]; let currentTab = 'pm'; let unreadData = {};
+        let repId = '', repType = 'text', repContent = '', repUser = '', repText = '';
+        let editingMsgId = null; let selectedFile = null;
+        let lastMsgDateStr = "";
+
+        // WebRTC GROUP CALLS
+        let localStream, screenStream, currentCallRoom;
+        let peerConnections = {}; // Теперь поддерживаются групповые звонки!
+        let isScreenSharing = false;
+        const iceServers = { iceServers:[{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun2.l.google.com:19302' }] };
+        window.onfocus = () => { document.title = "MAOCS"; };
+
+        function refreshOnlineUsers() { fetch('/get_online_users').then(r=>r.json()).then(users => { onlineUsers.clear(); users.forEach(u => onlineUsers.add(u)); updateUI(); }); }
+        refreshOnlineUsers(); setInterval(refreshOnlineUsers, 25000); window.addEventListener('focus', refreshOnlineUsers);
+        fetch('/get_online_users').then(r=>r.json()).then(users => { users.forEach(u => onlineUsers.add(u)); loadRequests(); loadSidebar(); });
+        socket.on('user_status', function(data) { if(data.online) onlineUsers.add(data.username); else onlineUsers.delete(data.username); updateUI(); });
+        socket.on('new_friend_req', loadRequests);
+
+        function loadRequests() {
+            fetch('/get_requests').then(r=>r.json()).then(reqs => {
+                let html = ''; reqs.forEach(sender => { html += `<div style="padding:10px; background:rgba(255,255,255,0.1); border-radius:8px; margin-bottom:5px; display:flex; justify-content:space-between;"><span><b>${sender}</b></span><div><button onclick="answerReq('${sender}', 'accept')" style="background:#2ed573; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">✔️</button> <button onclick="answerReq('${sender}', 'reject')" style="background:#ff4757; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">✖</button></div></div>`; });
+                document.getElementById('requests-container').innerHTML = html || '<span style="color:gray;">'+(UI_STRINGS[uiLang] || UI_STRINGS.uk).no_requests+'</span>';
+                document.getElementById('req-dot').style.display = reqs.length > 0 ? 'block' : 'none';
+            });
+        }
+        function answerReq(s, a) { fetch('/answer_request', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sender:s, action:a}) }).then(()=>{ loadRequests(); loadSidebar(); }); }
+        
+        function openSettings() { stopMicTest(); stopCamTest(); loadDevices(); document.getElementById('settings-modal').style.display = 'flex'; const t = (UI_STRINGS[uiLang] || UI_STRINGS.uk); fetch('/get_blocked').then(r=>r.json()).then(users => { let html = users.length === 0 ? '<span style="color:gray;">'+t.empty_list+'</span>' : ''; users.forEach(u => html += `<div style="display:flex; justify-content:space-between; margin-bottom:5px; padding:10px; background:rgba(255,255,255,0.1); border-radius:8px;"><span>${u}</span> <button onclick="unblock('${u}')" class="btn-action">${t.unblock}</button></div>`); document.getElementById('blocked-list').innerHTML = html; }); }
+        function unblock(u) { fetch('/unblock_user', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: u}) }).then(() => openSettings()); }
+        function closeModals(e) { if(e.target.classList.contains('modal-bg')) { e.target.style.display = 'none'; stopMicTest(); stopCamTest(); } }
+        function filterChats() { let f = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.chat-item').forEach(el => { el.style.display = el.querySelector('.chat-name').innerText.toLowerCase().includes(f) ? 'flex' : 'none'; }); }
+        function switchTab(tab) { currentTab = tab; document.getElementById('tab-pm').classList.remove('active'); document.getElementById('tab-group').classList.remove('active'); document.getElementById('tab-' + tab).classList.add('active'); renderChats(); }
+
+        function loadSidebar() {
+            fetch('/my_chats').then(r => r.json()).then(chats => {
+                allChats = chats; allChats.forEach(c => socket.emit('join', { room: c.id })); renderChats();
+                if (!currentRoom && window.innerWidth > 768) { let first = allChats.find(c => !c.id.startsWith('group_') && c.id !== 'global'); if (first) openChat(first.id, first.name); }
+            });
+        }
+
+        function renderChats() {
+            const list = document.getElementById('chat-list'); list.innerHTML = '';
+            let filtered = allChats.filter(chat => currentTab === 'group' ? (chat.id.startsWith('group_') || chat.id === 'global') : (!chat.id.startsWith('group_') && chat.id !== 'global'));
+            filtered.forEach(chat => {
+                let div = document.createElement('div'); div.className = 'chat-item ' + (currentRoom === chat.id ? 'active' : '');
+                let av = chat.avatar ? `<img src="${chat.avatar}">` : `${chat.id === 'global' ? '🌍' : (chat.id.startsWith('group_') ? '👥' : chat.name.charAt(0).toUpperCase())}`;
+                div.innerHTML = `<div class="avatar">${av}</div><div class="online-dot" id="dot-${chat.id}"></div><span class="chat-name">${chat.name}</span><span class="unread" id="unread-${chat.id}" style="${unreadData[chat.id] ? 'display:block;' : 'display:none;'}">Новое</span>`;
+                div.onclick = () => openChat(chat.id, chat.name); list.appendChild(div);
+            }); updateUI();
+        }
+
+        function updateUI() {
+            allChats.forEach(chat => { let dot = document.getElementById('dot-'+chat.id); if (dot) dot.style.display = (chat.target_user && onlineUsers.has(chat.target_user)) ? 'block' : 'none'; });
+            const t = (UI_STRINGS[uiLang] || UI_STRINGS.uk);
+            if (currentRoom && !currentRoom.startsWith('group_') && currentRoom !== 'global') { let chat = allChats.find(c => c.id === currentRoom); document.getElementById('chat-status').innerText = (chat && chat.target_user && onlineUsers.has(chat.target_user)) ? '🟢 ' + t.online : '⚪ ' + t.offline; } else if (!currentRoom) document.getElementById('chat-status').innerText = t.select_chat || '';
+        }
+
+        // ОБНОВЛЕНИЕ ПАНЕЛИ ПОСЛЕ ДЕЙСТВИЙ!
+        function addFriend() { let t = prompt("Ник пользователя:"); if (t) fetch('/send_friend_req', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:t}) }).then(r=>r.json()).then(d=>alert(d.msg||d.error)); }
+        function createGroup() { let t = prompt("Название группы:"); if (t) fetch('/add_group', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({target:t}) }).then(r=>r.json()).then(d=>{ loadSidebar(); setTimeout(()=>openChat(d.room_id, d.room_name),300); }); }
+        
+        function inviteToGroup() { let u = prompt("Ник друга:"); if(u) fetch('/invite_group', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoom, target: u}) }).then(r=>r.json()).then(d=>{if(d.error)alert(d.error);}); }
+        function manageGroup() { let action = prompt("ВЫГНАТЬ: kick ИМЯ\nЗАБАНИТЬ: ban ИМЯ"); if(!action) return; let parts = action.trim().split(' '); if (parts.length < 2) return; fetch('/kick_ban_user', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoom, target: parts.slice(1).join(' '), action: parts[0].toLowerCase()}) }).then(r=>r.json()).then(d=>{if(d.error)alert(d.error);}); }
+        
+        function unfriend() { if(confirm("Удалить из друзей?")) fetch('/unfriend', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({target: allChats.find(c => c.id === currentRoom).target_user}) }).then(() => { closeChatMobile(); loadSidebar(); }); }
+        function blockUser() { if(confirm("Заблокировать?")) fetch('/block_user', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({target: allChats.find(c => c.id === currentRoom).target_user}) }).then(() => { closeChatMobile(); loadSidebar(); }); }
+        function leaveGroup() { if(confirm("Выйти?")) fetch('/leave_group', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoom}) }).then(() => { closeChatMobile(); loadSidebar(); }); }
+        function deleteGroup() { const t = (UI_STRINGS[uiLang] || UI_STRINGS.uk); if(!confirm(t.delete_group + "?")) return; fetch('/delete_group', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoom}) }).then(r => r.json().then(res => { if (!r.ok && res.error) { alert(res.error); return; } closeChatMobile(); loadSidebar(); }).catch(() => alert('Ошибка'))); }
+        function clearChat() { fetch('/clear_chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({room_id: currentRoom}) }).then(()=>{ chatDiv.innerHTML=''; lastMsgDateStr = ""; }); }
+
+        function openChat(roomID, roomName) {
+            currentRoom = roomID; document.getElementById('chat-title').innerText = roomName; unreadData[roomID] = false; cancelReply(); cancelEdit(); cancelAttachment(); renderChats(); 
+            if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.add('hidden-mobile'); document.getElementById('chat-container').classList.add('active-mobile'); }
+            
+            const t = (UI_STRINGS[uiLang] || UI_STRINGS.uk);
+            let actions = '';
+            
+            // ЗВОНОК ТОЛЬКО ЕСЛИ НЕ GLOBAL
+            if (roomID !== 'global') {
+                actions += `<button class="btn-action btn-call" onclick="startCall()">📞 ${t.call}</button>`;
+            }
+
+            let currentChat = allChats.find(c => c.id === roomID);
+            
+            if (roomID.startsWith('group_')) {
+                actions += `<button class="btn-action" onclick="inviteToGroup()">${t.add_to_group}</button>`;
+                actions += `<button class="btn-action btn-danger" onclick="leaveGroup()">${t.leave}</button>`;
+                if (currentChat && currentChat.is_creator) {
+                    actions += `<button class="btn-action" onclick="manageGroup()" style="background:#8e44ad;">${t.members}</button>`;
+                    actions += `<button class="btn-action btn-danger" onclick="deleteGroup()">${t.delete_group}</button>`;
+                }
+            } else if (roomID !== 'global') {
+                actions += `<button class="btn-action" onclick="unfriend()">${t.unfriend}</button>`;
+                actions += `<button class="btn-action btn-danger" onclick="blockUser()">🚫 ${t.block}</button>`;
+            }
+            actions += `<button class="btn-action btn-danger" style="margin-left:auto;" onclick="clearChat()">${t.clear_chat}</button>`;
+            
+            document.getElementById('chat-actions').innerHTML = actions; document.getElementById('chat-actions').style.display = 'flex';
+            
+            lastMsgDateStr = "";
+            chatDiv.innerHTML = ''; fetch('/history/' + currentRoom).then(r => r.json()).then(async msgs => { for (let msg of msgs) { await displayMessage(msg); } chatDiv.scrollTop = chatDiv.scrollHeight; });
+        }
+
+        function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/"/g, "&quot;"); }
+        function linkify(text) { return text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#00d2ff; text-decoration:underline;">$1</a>'); }
+
+        function setReply(id, type, content, user, text) { 
+            cancelEdit(); repId = id; repType = type; repContent = content; repUser = user; repText = text; 
+            let box = `<b style="color:#00d2ff;">Ответ ${user}:</b> `;
+            
+            if(type === 'image') box += `<img src="${content}" class="msg-reply-thumb">`;
+            else if(type === 'video') box += `<video src="${content}#t=0.001" class="msg-reply-thumb" preload="metadata"></video>`;
+            else if(type === 'file') box += `<i>📎 Файл</i>`;
+            else box += `<i>${text}</i>`; 
+            
+            document.getElementById('reply-content-box').innerHTML = box;
+            document.getElementById('reply-banner').style.display = 'flex'; document.getElementById('msgInput').focus(); 
+        }
+        function cancelReply() { repId = ''; repType = 'text'; repContent = ''; repUser = ''; repText = ''; document.getElementById('reply-banner').style.display = 'none'; }
+        function scrollToMsg(id) { let el = document.getElementById('msg-' + id); if(el) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.style.background = 'rgba(0, 210, 255, 0.3)'; setTimeout(() => el.style.background = 'transparent', 1500); } }
+
+        function editMessage(id, text) { cancelReply(); editingMsgId = id; let i = document.getElementById('msgInput'); i.value = text; i.focus(); document.getElementById('sendBtn').innerText = (UI_STRINGS[uiLang] || UI_STRINGS.uk).save; document.getElementById('sendBtn').style.background = "#2ed573"; i.style.height='auto'; i.style.height=i.scrollHeight+'px'; }
+        function cancelEdit() { editingMsgId = null; let i = document.getElementById('msgInput'); i.value = ''; i.style.height='45px'; document.getElementById('sendBtn').innerText = (UI_STRINGS[uiLang] || UI_STRINGS.uk).send; document.getElementById('sendBtn').style.background = "linear-gradient(45deg, #00d2ff, #3a7bd5)"; }
+        function deleteMessage(id) { const t = (UI_STRINGS[uiLang] || UI_STRINGS.uk); if(confirm(t.delete_msg_confirm || "Удалить сообщение для всех?")) { socket.emit('delete_message', {msg_id: id, room: currentRoom}); } }
+
+        socket.on('receive_message', async function(msg) { if (msg.room === currentRoom) { await displayMessage(msg); chatDiv.scrollTop = chatDiv.scrollHeight; } else { unreadData[msg.room] = true; document.title = "🔔 Новое сообщение!"; renderChats(); playSound('notifSound'); }});
+        
+        // КОРРЕКТНОЕ ОБНОВЛЕНИЕ РЕДАКТИРОВАННОГО СООБЩЕНИЯ
+        socket.on('message_edited', async function(data) { 
+            if(currentRoom === data.room) { 
+                let el = document.getElementById('msg-' + data.msg_id); 
+                if(el) { 
+                    // Переводим если надо (для всех кроме самого отправителя, но тут мы просто переведем контент)
+                    let translated = await translateText(data.content);
+                    let editedTag = `<span class="edited-tag" style="font-size:11px; color:rgba(255,255,255,0.5); font-style:italic; margin-left:8px;">(изм.)</span>`;
+                    
+                    if(data.is_caption) { 
+                        let cap = el.querySelector('.msg-caption'); 
+                        if(cap) cap.innerHTML = linkify(escapeHtml(translated)) + editedTag; 
+                    } else { 
+                        let b = el.querySelector('.msg-text'); 
+                        if(b) b.innerHTML = linkify(escapeHtml(translated)) + editedTag; 
+                    } 
+                } 
+            }
+        });
+        socket.on('message_deleted', function(data) { if(currentRoom === data.room) { let el = document.getElementById('msg-' + data.msg_id); if(el) el.remove(); }});
+
+        function formatTime(ts) { if(!ts) return ""; let d = new Date(ts * 1000); return d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}); }
+        function formatDateDivider(ts) {
+            if (!ts) return "";
+            let d = new Date(ts * 1000);
+            return d.toLocaleDateString(uiLang === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        async function displayMessage(msg) {
+            if (msg.timestamp) {
+                let msgDateStr = formatDateDivider(msg.timestamp);
+                if (msgDateStr !== lastMsgDateStr && msgDateStr !== "") {
+                    let divDate = document.createElement('div');
+                    divDate.className = 'date-divider';
+                    divDate.innerHTML = `<span>${msgDateStr}</span>`;
+                    chatDiv.appendChild(divDate);
+                    lastMsgDateStr = msgDateStr;
+                }
+            }
+
+            let div = document.createElement('div'); let isMe = msg.username === myUsername; div.id = 'msg-' + msg.msg_id;
+            if (msg.type === 'system') { div.className = 'msg-system'; div.innerText = msg.content; chatDiv.appendChild(div); return; }
+
+            div.className = 'msg-row ' + (isMe ? 'my-msg-row' : '');
+            let av = !isMe ? `<div class="avatar" style="width:35px;height:35px; flex-shrink:0;">${msg.avatar ? `<img src="${msg.avatar}">` : msg.username.charAt(0).toUpperCase()}</div>` : '';
+            
+            let replyHtml = '';
+            if (msg.reply_id) {
+                let rc = '';
+                if (msg.reply_type === 'image') rc = `<img src="${msg.reply_content}" style="height:25px; border-radius:3px; margin-left:5px; vertical-align:middle;">`;
+                else if (msg.reply_type === 'video') rc = `<video src="${msg.reply_content}#t=0.001" style="height:25px; border-radius:3px; margin-left:5px; vertical-align:middle;" preload="metadata"></video>`;
+                else if (msg.reply_type === 'file') rc = `📎 Файл`;
+                else rc = `<i>${escapeHtml(msg.reply_text)}</i>`;
+                
+                replyHtml = `<div class="msg-reply-box" onclick="scrollToMsg('${msg.reply_id}')">↪ <b style="margin-right:5px;">${msg.reply_user}:</b> ${rc}</div>`;
+            }
+            
+            let contentHtml = `<div class="msg-content">`;
+            if(!isMe) contentHtml += `<span style="font-size:12px; color:rgba(255,255,255,0.5); margin-bottom:3px; margin-left:5px;">${msg.username}</span>`;
+            
+            let finalContent = msg.content;
+            if (msg.type === 'text' && !isMe) finalContent = await translateText(msg.content);
+
+            // ПОДСВЕТКА ОТВЕТА (ВКЛЮЧАЯ СЕБЯ ЖЕ)
+            let isReplyToMe = (msg.reply_user === myUsername);
+            let bubbleClass = 'msg-bubble' + (isReplyToMe ? ' reply-to-me' : '');
+
+            contentHtml += `${replyHtml}<div class="${bubbleClass}">`;
+            let editedHtml = msg.edited ? `<span class="edited-tag" style="font-size:11px; color:rgba(255,255,255,0.5); font-style:italic; margin-left:8px;">(изм.)</span>` : '';
+            
+            if (msg.caption) {
+                let capTxt = (!isMe) ? await translateText(msg.caption) : msg.caption;
+                contentHtml += `<div class="msg-caption">${linkify(escapeHtml(capTxt))}${msg.type!=='text'?editedHtml:''}</div>`;
+            }
+
+            if (msg.type === 'text') contentHtml += `<div class="msg-text">${linkify(escapeHtml(finalContent))}${editedHtml}</div>`;
+            else if (msg.type === 'image') contentHtml += `<div class="media-wrap"><img src="${msg.content}" class="media-thumbnail" onclick="openLightbox('${msg.content}', 'image')"></div>`;
+            else if (msg.type === 'video') contentHtml += `<div class="media-wrap"><video src="${msg.content}#t=0.001" class="media-thumbnail" onclick="openLightbox('${msg.content}', 'video')" preload="metadata" playsinline></video><div class="play-overlay">▶</div><br><a href="${msg.content}" target="_blank" style="font-size:11px; color:#00d2ff; text-decoration:none;">📎 Скачать видео</a></div>`;
+            else if (msg.type === 'file') contentHtml += `<a href="${msg.content}" target="_blank" style="color:#00d2ff;">📎 Скачать файл: ${msg.content.split('/').pop()}</a>`;
+            
+            contentHtml += `</div><div class="msg-time">${formatTime(msg.timestamp)}</div></div>`;
+            
+            let safeReplyText = msg.type === 'text' ? escapeHtml(msg.content) : (msg.caption ? escapeHtml(msg.caption) : 'Медиа');
+            let actionsHtml = `<div class="msg-actions">`;
+            actionsHtml += `<button class="action-btn-msg" onclick="setReply('${msg.msg_id}', '${msg.type}', '${msg.content}', '${msg.username}', '${safeReplyText.replace(/'/g, "\\'")}')">↩</button>`;
+            if (isMe) {
+                if (msg.type === 'text' || msg.caption !== '') actionsHtml += `<button class="action-btn-msg" onclick="editMessage('${msg.msg_id}', '${safeReplyText.replace(/'/g, "\\'")}')">✏️</button>`;
+                actionsHtml += `<button class="action-btn-msg" onclick="deleteMessage('${msg.msg_id}')" style="background:rgba(255,71,87,0.5);">🗑️</button>`;
+            }
+            actionsHtml += `</div>`;
+            
+            div.innerHTML = av + contentHtml + actionsHtml; chatDiv.appendChild(div);
+        }
+
+        function openLightbox(src, type) { 
+            document.getElementById('lightbox').style.display = 'flex'; 
+            let img = document.getElementById('lb-img'); 
+            let vid = document.getElementById('lb-vid'); 
+            img.style.display = 'none'; vid.style.display = 'none'; 
+            if(type === 'image') { 
+                img.style.display='block'; img.src = src; 
+            } else { 
+                vid.style.display='block'; vid.src = src; 
+                vid.play().catch(()=>{}); 
+            } 
+        }
+        function closeLightbox(e) { 
+            if(e.target.tagName !== 'DIV' && e.target.className !== 'lightbox-close') return; 
+            document.getElementById('lightbox').style.display = 'none'; 
+            let v = document.getElementById('lb-vid'); v.pause(); v.removeAttribute('src'); 
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function() {
+            if (this.files.length > 0) {
+                selectedFile = this.files[0];
+                document.getElementById('attachment-preview').style.display = 'flex';
+                document.getElementById('attachment-name').innerText = selectedFile.name;
+                document.getElementById('msgInput').focus();
+            }
+        });
+        function cancelAttachment() { selectedFile = null; document.getElementById('fileInput').value = ''; document.getElementById('attachment-preview').style.display = 'none'; }
+
+        function sendMsg() { 
+            let i = document.getElementById('msgInput'); 
+            let text = i.value.trim();
+
+            if (editingMsgId) { if(text !== "") { socket.emit('edit_message', {msg_id: editingMsgId, content: text, room: currentRoom}); cancelEdit(); } return; } 
+            
+            if (selectedFile) {
+                let fileToSend = selectedFile;
+                let currentText = text;
+                let repU = repUser, repT = repText, repI = repId, repTy = repType, repC = repContent;
+
+                cancelAttachment();
+                cancelReply();
+                i.value = ''; i.style.height = '45px';
+
+                let tempId = 'temp_' + Date.now();
+                let tempMsg = {msg_id: tempId, username: myUsername, type:'system', content: '⏳ Отправка медиа/файла... Пожалуйста подождите', timestamp: Date.now()/1000}; 
+                displayMessage(tempMsg); chatDiv.scrollTop = chatDiv.scrollHeight;
+
+                const fd = new FormData(); 
+                fd.append('file', fileToSend); fd.append('room', currentRoom); fd.append('caption', currentText); 
+                fd.append('reply_user', repU); fd.append('reply_text', repT); fd.append('reply_id', repI); fd.append('reply_type', repTy); fd.append('reply_content', repC);
+                
+                fetch('/upload', { method: 'POST', body: fd }).then(r=>r.json()).then(d=>{ 
+                    let tm=document.getElementById('msg-'+tempId); if(tm) tm.remove(); 
+                    if(!d.success) alert("Ошибка загрузки!"); 
+                }).catch(() => {
+                    let tm=document.getElementById('msg-'+tempId); if(tm) tm.remove(); alert("Ошибка сети!");
+                });
+            } else if (text !== "") { 
+                socket.emit('send_message', { content: text, room: currentRoom, reply_user: repUser, reply_text: repText, reply_id: repId, reply_type: repType, reply_content: repContent }); 
+                i.value = ''; i.style.height = '45px'; cancelReply(); 
+            }
+        }
+        
+        const msgInput = document.getElementById('msgInput');
+        msgInput.addEventListener('keydown', function(e) {
+            if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+        });
+        msgInput.addEventListener('input', function() {
+            this.style.height = '45px';
+            this.style.height = (this.scrollHeight) + 'px';
+            if(!currentRoom || editingMsgId) return; 
+            socket.emit('typing', {room: currentRoom}); 
+            clearTimeout(typingTimer); typingTimer = setTimeout(() => { socket.emit('stop_typing', {room: currentRoom}); }, 1500);
+        });
+        
+        document.getElementById('avatarUpload').addEventListener('change', function(e) { 
+            if (this.files.length === 0) return; 
+            let file = this.files[0];
+            let reader = new FileReader();
+            reader.onload = function(event) {
+                let img = new Image();
+                img.onload = function() {
+                    let canvas = document.createElement('canvas'); let ctx = canvas.getContext('2d');
+                    let max = 200; let w = img.width, h = img.height;
+                    if (w > h) { if (w > max) { h *= max / w; w = max; } } else { if (h > max) { w *= max / h; h = max; } }
+                    canvas.width = w; canvas.height = h;
+                    ctx.drawImage(img, 0, 0, w, h);
+                    canvas.toBlob(function(blob) {
+                        let fd = new FormData(); fd.append('file', blob, 'avatar.jpg');
+                        fetch('/upload_avatar', { method:'POST', body: fd }).then(()=>window.location.reload());
+                    }, 'image/jpeg', 0.85);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        let typingTimer;
+        socket.on('user_typing', function(data) { if (data.room === currentRoom) { document.getElementById('typing-status').innerText = data.username + ' ' + ((UI_STRINGS[uiLang] || UI_STRINGS.uk).typing); document.getElementById('typing-status').style.display = 'block'; chatDiv.scrollTop = chatDiv.scrollHeight; }});
+        socket.on('user_stop_typing', function(data) { if (data.room === currentRoom) document.getElementById('typing-status').style.display = 'none'; });
+
+        // === МНОГОПОЛЬЗОВАТЕЛЬСКИЕ (ГРУППОВЫЕ) ЗВОНКИ MESH WEBRTC ===
+        let callTimerInt = null; let callStartTime = 0; let ringTimeout = null;
+
+        async function getMedia(isVideoEnabled = false) { 
+            try { 
+                let micId = document.getElementById('micSelect').value; let camId = document.getElementById('camSelect').value;
+                let constraints = { audio: micId ? {deviceId: {exact: micId}} : true, video: camId ? {deviceId: {exact: camId}} : true };
+                localStream = await navigator.mediaDevices.getUserMedia(constraints); 
+                localStream.getVideoTracks()[0].enabled = isVideoEnabled; 
+                document.getElementById('localVideo').srcObject = localStream; 
+                
+                document.getElementById('callMicSelect').value = micId || '';
+                document.getElementById('callCamSelect').value = camId || '';
+                return true; 
+            } catch (err) { alert("Камера/микрофон заблокированы! Разрешите доступ."); return false; } 
+        }
+        function formatCallTime(secs) { let m = Math.floor(secs/60); let s = secs%60; return (m<10?'0':'')+m+':'+(s<10?'0':'')+s; }
+        
+        function startCall() { 
+            currentCallRoom = currentRoom; maximizeCall(); document.getElementById('call-status').innerText = "Звоним..."; document.getElementById('call-timer').style.display = 'none';
+            getMedia(false).then((success) => { 
+                if(success) {
+                    loadDevices();
+                    socket.emit('call_user', {room: currentRoom}); 
+                    joinCallMesh();
+                    
+                    // Таймаут для сброса звонка
+                    ringTimeout = setTimeout(() => { 
+                        if(Object.keys(peerConnections).length === 0) { // Если никто не ответил
+                            socket.emit('send_sys_msg', {room: currentCallRoom, content: "☎️ Пропущенный звонок"}); 
+                            socket.emit('webrtc_signal', {room: currentCallRoom, cancel_ring: true, broadcast: true}); 
+                            endCallUI(); 
+                        }
+                    }, 120000); 
+                } else endCallUI(); 
+            }); 
+        }
+
+        socket.on('incoming_call', function(data) { 
+            currentCallRoom = data.room; 
+            document.getElementById('caller-name').innerText = `Звонок от ${data.from}...`; 
+            document.getElementById('call-ringing').style.display = 'block'; 
+            playSound('ringtone'); 
+        });
+
+        function rejectCall() { 
+            socket.emit('call_response', {room: currentCallRoom, accepted: false}); 
+            socket.emit('send_sys_msg', {room: currentCallRoom, content: "☎️ Отклоненный звонок"}); 
+            endCallUI(); 
+        }
+        
+        function acceptCall() { 
+            document.getElementById('ringtone').pause(); document.getElementById('ringtone').currentTime=0; 
+            document.getElementById('call-ringing').style.display = 'none'; 
+            maximizeCall(); document.getElementById('call-status').innerText = "В звонке 🟢"; 
+            
+            getMedia(false).then((success) => { 
+                if(success) { 
+                    loadDevices(); 
+                    socket.emit('call_response', {room: currentCallRoom, accepted: true}); 
+                    joinCallMesh();
+                } else { 
+                    socket.emit('call_response', {room: currentCallRoom, accepted: false}); 
+                    endCallUI(); 
+                } 
+            }); 
+        }
+
+        function joinCallMesh() {
+            document.getElementById('call-status').innerText = "В звонке 🟢";
+            document.getElementById('call-timer').style.display = 'block'; 
+            if(!callTimerInt){
+                callStartTime = Date.now(); 
+                callTimerInt = setInterval(() => { document.getElementById('call-timer').innerText = formatCallTime(Math.floor((Date.now()-callStartTime)/1000)); }, 1000); 
+            }
+            socket.emit('join_call_room', {room: currentCallRoom});
+        }
+
+        socket.on('user_joined_call', async (data) => {
+            let sid = data.sid;
+            if (!peerConnections[sid]) {
+                let pc = createPC(sid);
+                let offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('webrtc_signal', {target_sid: sid, sender_sid: socket.id, sdp: offer});
+            }
+        });
+
+        function createPC(sid) {
+            let pc = new RTCPeerConnection(iceServers);
+            peerConnections[sid] = pc;
+            
+            if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+            if (screenStream) screenStream.getTracks().forEach(t => pc.addTrack(t, screenStream));
+
+            pc.ontrack = (e) => {
+                let vidId = 'remoteVid_' + sid;
+                let vid = document.getElementById(vidId);
+                if (!vid) {
+                    vid = document.createElement('video');
+                    vid.id = vidId;
+                    vid.autoplay = true; vid.playsInline = true;
+                    document.getElementById('video-grid').appendChild(vid);
+                }
+                if (!vid.srcObject) vid.srcObject = e.streams[0] || new MediaStream([e.track]);
+                else vid.srcObject.addTrack(e.track);
+            };
+
+            pc.onicecandidate = (e) => {
+                if (e.candidate) socket.emit('webrtc_signal', {target_sid: sid, sender_sid: socket.id, candidate: e.candidate});
+            };
+            return pc;
+        }
+
+        socket.on('webrtc_signal', async (data) => { 
+            // Обработка отмены звонка инициатором
+            if (data.cancel_ring && data.broadcast) { endCallUI(); return; }
+            
+            // Если кто-то вышел
+            if (data.user_left) {
+                let sid = data.user_left;
+                if (peerConnections[sid]) { peerConnections[sid].close(); delete peerConnections[sid]; }
+                let vid = document.getElementById('remoteVid_' + sid);
+                if (vid) vid.remove();
+                
+                // Если никого не осталось в звонке, завершаем
+                if(Object.keys(peerConnections).length === 0 && currentCallRoom) { endCallUI(); }
+                return;
+            }
+
+            if (data.target_sid !== socket.id) return;
+            let sender_sid = data.sender_sid;
+            if (!sender_sid) return;
+
+            let pc = peerConnections[sender_sid];
+            if (!pc && data.sdp && data.sdp.type === 'offer') { pc = createPC(sender_sid); }
+            if (!pc) return;
+
+            if (data.sdp) { 
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp)); 
+                if (data.sdp.type === 'offer') { 
+                    let answer = await pc.createAnswer(); 
+                    await pc.setLocalDescription(answer); 
+                    socket.emit('webrtc_signal', {target_sid: sender_sid, sender_sid: socket.id, sdp: answer}); 
+                } 
+            } else if (data.candidate) { 
+                pc.addIceCandidate(new RTCIceCandidate(data.candidate)); 
+            } 
+        });
+        
+        function toggleMute() { let t = localStream.getAudioTracks()[0]; if(!t) return; t.enabled = !t.enabled; document.getElementById('btn-mute').innerText = t.enabled ? "🎤 Вкл" : "🎤 Выкл"; document.getElementById('btn-mute').style.background = t.enabled ? "rgba(255,255,255,0.2)" : "#ff4757"; }
+        function toggleVideo() { let t = localStream.getVideoTracks()[0]; if(!t) return; t.enabled = !t.enabled; document.getElementById('btn-video').innerText = t.enabled ? "📷 Вкл" : "📷 Выкл"; document.getElementById('btn-video').style.background = t.enabled ? "rgba(255,255,255,0.2)" : "#ff4757"; }
+        
+        async function changeCallDevice() {
+            let micId = document.getElementById('callMicSelect').value; let camId = document.getElementById('callCamSelect').value;
+            try {
+                let newStream = await navigator.mediaDevices.getUserMedia({ audio: micId ? {deviceId: {exact: micId}} : true, video: camId ? {deviceId: {exact: camId}} : true });
+                
+                // Заменяем треки во всех соединениях
+                Object.values(peerConnections).forEach(pc => {
+                    let senders = pc.getSenders();
+                    newStream.getTracks().forEach(track => { let sender = senders.find(s => s.track && s.track.kind === track.kind); if (sender) sender.replaceTrack(track); });
+                });
+                
+                localStream.getTracks().forEach(t => t.stop()); localStream = newStream; document.getElementById('localVideo').srcObject = localStream;
+                let audioTrack = localStream.getAudioTracks()[0]; let videoTrack = localStream.getVideoTracks()[0];
+                let btnMute = document.getElementById('btn-mute').innerText.includes("Выкл"); let btnVid = document.getElementById('btn-video').innerText.includes("Выкл");
+                if (audioTrack) audioTrack.enabled = !btnMute; if (videoTrack) videoTrack.enabled = !btnVid;
+            } catch(e) { console.error("Ошибка смены устройства", e); }
+        }
+
+        async function toggleScreenShare() { 
+            if (!isScreenSharing) { 
+                try { 
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({video: {displaySurface: "monitor"}}); 
+                    
+                    Object.values(peerConnections).forEach(pc => {
+                        screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+                        pc.createOffer().then(offer => { pc.setLocalDescription(offer); socket.emit('webrtc_signal', {target_sid: findSidByPc(pc), sender_sid: socket.id, sdp: offer}); });
+                    });
+
+                    isScreenSharing = true; document.getElementById('btn-screen').innerText = "💻 Останов."; document.getElementById('btn-screen').style.background = "#ff4757"; 
+                    screenStream.getVideoTracks()[0].onended = () => { stopScreenShare(); }; 
+                } catch(e) {} 
+            } else { stopScreenShare(); } 
+        }
+
+        function stopScreenShare() { 
+            if(screenStream) { 
+                Object.values(peerConnections).forEach(pc => {
+                    let senders = pc.getSenders(); 
+                    screenStream.getTracks().forEach(track => { let sender = senders.find(s => s.track === track); if(sender) pc.removeTrack(sender); }); 
+                    pc.createOffer().then(offer => { pc.setLocalDescription(offer); socket.emit('webrtc_signal', {target_sid: findSidByPc(pc), sender_sid: socket.id, sdp: offer}); });
+                });
+                screenStream.getTracks().forEach(track => track.stop());
+            }
+            isScreenSharing = false; document.getElementById('btn-screen').innerText = "💻 Экран"; document.getElementById('btn-screen').style.background = "#00d2ff"; 
+        }
+
+        function findSidByPc(targetPc) {
+            for (let sid in peerConnections) { if (peerConnections[sid] === targetPc) return sid; }
+            return null;
+        }
+
+        function minimizeCall() { document.getElementById('call-modal').style.display = 'none'; document.getElementById('minimized-call').style.display = 'block'; }
+        function maximizeCall() { document.getElementById('call-modal').style.display = 'flex'; document.getElementById('minimized-call').style.display = 'none'; }
+
+        function endCall(isInitiator=false) { 
+            if(isInitiator && callTimerInt) { 
+                let dur = formatCallTime(Math.floor((Date.now()-callStartTime)/1000)); 
+                socket.emit('send_sys_msg', {room: currentCallRoom, content: `📞 Звонок завершен. Длительность: ${dur}`}); 
+            }
+            // Если инициатор сбросил и больше никого нет, отменяем гудки
+            if (Object.keys(peerConnections).length === 0 && isInitiator) {
+                socket.emit('webrtc_signal', {room: currentCallRoom, cancel_ring: true, broadcast: true}); 
+            }
+            endCallUI(); 
+        }
+        
+        function endCallUI() { 
+            clearInterval(callTimerInt); callTimerInt = null; clearTimeout(ringTimeout); document.getElementById('minimized-call').style.display = 'none';
+            document.getElementById('ringtone').pause(); document.getElementById('ringtone').currentTime=0; 
+            document.getElementById('call-ringing').style.display = 'none'; document.getElementById('call-modal').style.display = 'none'; 
+            
+            if(currentCallRoom) socket.emit('leave_call_room', {room: currentCallRoom});
+
+            Object.values(peerConnections).forEach(pc => pc.close()); peerConnections = {};
+            if(localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; } 
+            if(screenStream) { screenStream.getTracks().forEach(track => track.stop()); screenStream = null; } 
+            
+            // Очищаем видео элементы сетки, кроме локального
+            let grid = document.getElementById('video-grid');
+            let videos = grid.querySelectorAll('video');
+            videos.forEach(v => { if(v.id !== 'localVideo') v.remove(); else v.srcObject = null; });
+            
+            currentCallRoom = null; isScreenSharing = false; 
+            document.getElementById('btn-screen').innerText = "💻 Экран"; document.getElementById('btn-screen').style.background = "#00d2ff"; 
+            document.getElementById('btn-video').innerText = "📷 Выкл"; document.getElementById('btn-video').style.background = "#ff4757"; 
+            document.getElementById('btn-mute').innerText = "🎤 Вкл"; document.getElementById('btn-mute').style.background = "rgba(255,255,255,0.2)"; 
+        }
+    </script>
+</body>
+</html>
